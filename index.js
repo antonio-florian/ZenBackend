@@ -18,6 +18,10 @@ app.get('/api/hello', (req, res) => {
 // Add more API endpoints here
 
 // Start server
-app.listen(PORT, () => {
-	console.log(`Server running on port ${PORT}`);
-});
+if (require.main === module) {
+	app.listen(PORT, () => {
+		console.log(`Server running on port ${PORT}`);
+	});
+}
+
+module.exports = app;
