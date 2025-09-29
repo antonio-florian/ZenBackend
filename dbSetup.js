@@ -17,23 +17,33 @@ const columns = [
 ];
 
 async function ensureTableAndColumns() {
-  // Create table if not exists
-  const createTableSQL = `CREATE TABLE IF NOT EXISTS ${tableName} (${columns.map(col => `${col.name} ${col.type}`).join(', ')});`;
-  await pool.query(createTableSQL);
+  // Check if table exists (PostgreSQL stores unquoted table names in lowercase)
+  const tableExistsResult = await pool.query(
+    `SELECT EXISTS (
+      SELECT FROM information_schema.tables 
+      WHERE table_name = $1 AND table_schema = 'public'
+    ) AS exists`,
+    [tableName.toLowerCase()]
+  );
+  const tableExists = tableExistsResult.rows[0].exists;
 
-  // Get existing columns
-  const result = await pool.query(`SELECT column_name FROM information_schema.columns WHERE table_name = $1`, [tableName]);
-  const existingCols = result.rows.map(row => row.column_name);
-
-  // Add missing columns
-  for (const col of columns) {
-    if (!existingCols.includes(col.name)) {
-      await pool.query(`ALTER TABLE ${tableName} ADD COLUMN ${col.name} ${col.type};`);
-      console.log(`Added column: ${col.name}`);
+  if (!tableExists) {
+    // Create table with all columns if it doesn't exist
+    const createTableSQL = `CREATE TABLE ${tableName} (${columns.map(col => `${col.name} ${col.type}`).join(', ')});`;
+    await pool.query(createTableSQL);
+    console.log(`Table '${tableName}' created.`);
+  } else {
+    // Table exists, check for missing columns
+    const result = await pool.query(`SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND table_schema = 'public'`, [tableName.toLowerCase()]);
+    const existingCols = result.rows.map(row => row.column_name);
+    for (const col of columns) {
+      if (!existingCols.includes(col.name)) {
+        await pool.query(`ALTER TABLE ${tableName} ADD COLUMN ${col.name} ${col.type};`);
+        console.log(`Added column: ${col.name}`);
+      }
     }
+    console.log(`Table '${tableName}' already exists. Columns updated if needed.`);
   }
-
-  console.log('Database setup complete.');
   await pool.end();
 }
 
