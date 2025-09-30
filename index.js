@@ -26,12 +26,13 @@ app.get('/api/dbtest', async (req, res) => {
 app.use(cors());
 app.use(express.json());
 
-// Example API endpoint
-app.get('/api/hello', (req, res) => {
-	res.json({ message: 'Hello from the backend!' });
-});
 
-// Add more API endpoints here
+
+// Modularized routes
+app.use('/api/users', require('./routes/users'));
+app.use('/api/stories', require('./routes/stories'));
+app.use('/api/comments', require('./routes/comments'));
+app.use('/api/tags', require('./routes/tags'));
 
 // Start server
 if (require.main === module) {
