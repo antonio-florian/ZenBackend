@@ -8,46 +8,64 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
-// Table and columns definition
-const tableName = 'ZenDB';
-const columns = [
-  { name: 'id', type: 'SERIAL PRIMARY KEY' },
-  { name: 'name', type: 'VARCHAR(100)' },
-  { name: 'email', type: 'VARCHAR(100)' },
+// Full schema creation for story-posting app
+const tableStatements = [
+  `CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    bio TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+  );`,
+  `CREATE TABLE IF NOT EXISTS stories (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+  );`,
+  `CREATE TABLE IF NOT EXISTS comments (
+    id SERIAL PRIMARY KEY,
+    story_id INTEGER REFERENCES stories(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+  );`,
+  `CREATE TABLE IF NOT EXISTS tags (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(50) UNIQUE NOT NULL
+  );`,
+  `CREATE TABLE IF NOT EXISTS likes (
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    story_id INTEGER REFERENCES stories(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    PRIMARY KEY (user_id, story_id)
+  );`,
+  `CREATE TABLE IF NOT EXISTS story_tags (
+    story_id INTEGER REFERENCES stories(id) ON DELETE CASCADE,
+    tag_id INTEGER REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (story_id, tag_id)
+  );`,
+  `CREATE TABLE IF NOT EXISTS followers (
+    follower_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    following_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    PRIMARY KEY (follower_id, following_id)
+  );`
 ];
 
-async function ensureTableAndColumns() {
-  // Check if table exists (PostgreSQL stores unquoted table names in lowercase)
-  const tableExistsResult = await pool.query(
-    `SELECT EXISTS (
-      SELECT FROM information_schema.tables 
-      WHERE table_name = $1 AND table_schema = 'public'
-    ) AS exists`,
-    [tableName.toLowerCase()]
-  );
-  const tableExists = tableExistsResult.rows[0].exists;
-
-  if (!tableExists) {
-    // Create table with all columns if it doesn't exist
-    const createTableSQL = `CREATE TABLE ${tableName} (${columns.map(col => `${col.name} ${col.type}`).join(', ')});`;
-    await pool.query(createTableSQL);
-    console.log(`Table '${tableName}' created.`);
-  } else {
-    // Table exists, check for missing columns
-    const result = await pool.query(`SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND table_schema = 'public'`, [tableName.toLowerCase()]);
-    const existingCols = result.rows.map(row => row.column_name);
-    for (const col of columns) {
-      if (!existingCols.includes(col.name)) {
-        await pool.query(`ALTER TABLE ${tableName} ADD COLUMN ${col.name} ${col.type};`);
-        console.log(`Added column: ${col.name}`);
-      }
+async function ensureSchema() {
+  try {
+    for (const stmt of tableStatements) {
+      await pool.query(stmt);
     }
-    console.log(`Table '${tableName}' already exists. Columns updated if needed.`);
+    console.log('All tables checked/created. Schema is up to date.');
+  } catch (err) {
+    console.error('Error setting up database:', err);
+  } finally {
+    await pool.end();
   }
-  await pool.end();
 }
 
-ensureTableAndColumns().catch(err => {
-  console.error('Error setting up database:', err);
-  pool.end();
-});
+ensureSchema();
